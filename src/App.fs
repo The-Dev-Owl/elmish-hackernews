@@ -6,7 +6,7 @@ open Feliz
 open Thoth.Json
 open Fable.SimpleHttp
 
-type HackernewItem = {
+type HackernewsItem = {
   id: int
   title: string
   itemType: string
@@ -24,17 +24,17 @@ type Stories =
 
 type State =
   { CurrentStories: Stories
-    StoryItems : Deferred<Result<HackernewItem list, string>> }
+    StoryItems : Deferred<Result<HackernewsItem list, string>> }
 
 type Msg =
-  | LoadStoryItems of AsyncOperationEvent<Result<HackernewItem list, string>>
+  | LoadStoryItems of AsyncOperationEvent<Result<HackernewsItem list, string>>
   | ChangeStories of Stories
 
 let init() =
     { CurrentStories = Stories.New
       StoryItems = HasNotStartedYet }, Cmd.ofMsg (LoadStoryItems Started)
 
-let itemDecoder : Decoder<HackernewItem> =
+let itemDecoder : Decoder<HackernewsItem> =
   Decode.object (fun fields -> {
     id = fields.Required.At [ "id" ] Decode.int
     title = fields.Required.At [ "title" ] Decode.string
@@ -157,7 +157,7 @@ let renderError (errorMsg: string) =
     prop.text errorMsg
   ]
 
-let renderItems (items: HackernewItem list) =
+let renderItems (items: HackernewsItem list) =
   Html.fragment [
     for item in items ->
     Html.div [
