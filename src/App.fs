@@ -123,8 +123,7 @@ let storiesName = function
 
 let renderTab currentStories stories dispatch =
   Html.li [
-    if currentStories = stories
-    then prop.className "is-active"
+    prop.className [ currentStories = stories, "is-active" ]
     prop.onClick (fun _ -> if (currentStories <> stories) then dispatch (ChangeStories stories))
     prop.children [
       Html.a [ Html.span (storiesName stories) ]
