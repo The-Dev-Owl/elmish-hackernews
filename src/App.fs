@@ -59,17 +59,22 @@ let loadStoryItem (id: int) = async {
   | 200 ->
     match Decode.fromString itemDecoder responseText with
     | Ok storyItem -> return Some storyItem
-    | Error errorMsg -> return None
+    | Error _ -> return None
   | _ ->
     return None
 }
+
+let (|HttpOk|HttpError|) status =
+  match status with 
+  | 200 -> HttpOk
+  | _ -> HttpError
 
 let loadStoryItems stories = async {
   do! Async.Sleep 1500
   let endpoint = storiesEndpoint stories
   let! (status, responseText) = Http.get endpoint
   match status with
-  | 200 ->
+  | HttpOk ->
     // parse the response text as a list of IDs (ints)
     let storyIds = Decode.fromString (Decode.list Decode.int) responseText
     match storyIds with
@@ -89,7 +94,7 @@ let loadStoryItems stories = async {
     | Error errorMsg ->
         // could not parse the array of story ID's
         return LoadStoryItems (Finished (Error errorMsg))
-  | _ ->
+  | HttpError ->
     // non-OK response goes finishes with an error
     return LoadStoryItems (Finished (Error responseText))
 }
