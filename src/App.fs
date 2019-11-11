@@ -31,8 +31,8 @@ type Msg =
   | ChangeStories of Stories
 
 let init() =
-    { CurrentStories = Stories.New
-      StoryItems = HasNotStartedYet }, Cmd.ofMsg (LoadStoryItems Started)
+  { CurrentStories = Stories.New
+    StoryItems = HasNotStartedYet }, Cmd.ofMsg (LoadStoryItems Started)
 
 let itemDecoder : Decoder<HackernewsItem> =
   Decode.object (fun fields -> {
@@ -103,20 +103,20 @@ let startLoading (state: State) =
   { state with StoryItems = InProgress }
 
 let update (msg: Msg) (state: State) =
-    match msg with
-    | ChangeStories stories ->
-        let nextState = { startLoading state with CurrentStories = stories }
-        let nextCmd = Cmd.fromAsync (loadStoryItems stories)
-        nextState, nextCmd
+  match msg with
+  | ChangeStories stories ->
+      let nextState = { startLoading state with CurrentStories = stories }
+      let nextCmd = Cmd.fromAsync (loadStoryItems stories)
+      nextState, nextCmd
 
-    | LoadStoryItems Started ->
-        let nextState = startLoading state
-        let nextCmd = Cmd.fromAsync (loadStoryItems state.CurrentStories)
-        nextState, nextCmd
+  | LoadStoryItems Started ->
+      let nextState = startLoading state
+      let nextCmd = Cmd.fromAsync (loadStoryItems state.CurrentStories)
+      nextState, nextCmd
 
-    | LoadStoryItems (Finished items) ->
-        let nextState = { state with StoryItems = Resolved items }
-        nextState, Cmd.none
+  | LoadStoryItems (Finished items) ->
+      let nextState = { state with StoryItems = Resolved items }
+      nextState, Cmd.none
 
 let storiesName = function
   | Stories.New -> "New"
@@ -163,20 +163,20 @@ let renderError (errorMsg: string) =
 
 let renderItem item =
   Html.div [
-      prop.className "box"
-      prop.style [
-        style.marginTop 15
-        style.marginBottom 15
-      ]
-      prop.children [
-        Html.a [
-          prop.style [ style.textDecoration.underline ]
-          prop.custom("target", "_blank")
-          prop.href item.url
-          prop.text item.title
-        ]
+    prop.className "box"
+    prop.style [
+      style.marginTop 15
+      style.marginBottom 15
+    ]
+    prop.children [
+      Html.a [
+        prop.style [ style.textDecoration.underline ]
+        prop.custom("target", "_blank")
+        prop.href item.url
+        prop.text item.title
       ]
     ]
+  ]
 
 let renderItems (items: HackernewsItem list) =
   Html.fragment [
