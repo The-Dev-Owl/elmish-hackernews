@@ -12,6 +12,7 @@ type HackernewsItem = {
   itemType: string
   url: string
   score : int
+  kids : int list
 }
 
 [<RequireQualifiedAccess>]
@@ -42,7 +43,7 @@ let itemDecoder : Decoder<HackernewsItem> =
     itemType = fields.Required.At [ "type" ] Decode.string
     url = fields.Required.At [ "url" ] Decode.string
     score = fields.Required.At [ "score" ] Decode.int
-  })
+    kids = fields.Required.At [ "kids" ] (Decode.list Decode.int) })
 
 let storiesEndpoint stories =
   let fromBaseUrl = sprintf "https://hacker-news.firebaseio.com/v0/%sstories.json"
@@ -180,25 +181,34 @@ let renderItem item =
         ]                   
       ]
       Html.div [
-        prop.className "columns"
         prop.children [
           Html.div [
-            prop.className "column is-one-fifths"
+            prop.className "tag is-info"
             prop.children [
-              Html.div [
-                prop.className "tag is-info"
-                prop.children [
-                  Html.span [
-                    prop.className "icon"
-                    prop.children [ 
-                      Html.i [prop.className "fas fa-poll"]
-                    ]
-                  ] 
-                  Html.span item.score 
-                 ]               
-              ]
-            ]                  
-          ]        
+              Html.span [
+                prop.className "icon"
+                prop.children [ 
+                  Html.i [prop.className "fas fa-poll"]
+                ]
+              ] 
+              Html.span item.score 
+             ]               
+          ]
+          Html.span " "
+          Html.a [
+            prop.className "tag is-link"
+            prop.href (sprintf "https://news.ycombinator.com/item?id=%i" item.id)
+            prop.custom("target", "_blank")
+            prop.children [
+              Html.span [
+                prop.className "icon"
+                prop.children [ 
+                  Html.i [prop.className "fas fa-comments"]
+                ]
+              ] 
+              Html.span (item.kids |> List.length) 
+             ]               
+          ]     
         ]      
       ]
     ]
