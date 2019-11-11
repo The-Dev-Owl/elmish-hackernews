@@ -156,10 +156,8 @@ let renderError (errorMsg: string) =
     prop.text errorMsg
   ]
 
-let renderItems (items: HackernewsItem list) =
-  Html.fragment [
-    for item in items ->
-    Html.div [
+let renderItem item =
+  Html.div [
       prop.className "box"
       prop.style [
         style.marginTop 15
@@ -174,6 +172,11 @@ let renderItems (items: HackernewsItem list) =
         ]
       ]
     ]
+
+let renderItems (items: HackernewsItem list) =
+  Html.fragment [
+    for item in items ->
+      renderItem item
   ]
 
 let spinner =
