@@ -11,6 +11,7 @@ type HackernewsItem = {
   title: string
   itemType: string
   url: string
+  score : int
 }
 
 [<RequireQualifiedAccess>]
@@ -40,6 +41,7 @@ let itemDecoder : Decoder<HackernewsItem> =
     title = fields.Required.At [ "title" ] Decode.string
     itemType = fields.Required.At [ "type" ] Decode.string
     url = fields.Required.At [ "url" ] Decode.string
+    score = fields.Required.At [ "score" ] Decode.int
   })
 
 let storiesEndpoint stories =
@@ -169,11 +171,35 @@ let renderItem item =
       style.marginBottom 15
     ]
     prop.children [
-      Html.a [
-        prop.style [ style.textDecoration.underline ]
-        prop.custom("target", "_blank")
-        prop.href item.url
-        prop.text item.title
+      Html.div [
+        Html.a [
+          prop.style [ style.textDecoration.underline ]
+          prop.custom("target", "_blank")
+          prop.href item.url
+          prop.text item.title
+        ]                   
+      ]
+      Html.div [
+        prop.className "columns"
+        prop.children [
+          Html.div [
+            prop.className "column is-one-fifths"
+            prop.children [
+              Html.div [
+                prop.className "tag is-info"
+                prop.children [
+                  Html.span [
+                    prop.className "icon"
+                    prop.children [ 
+                      Html.i [prop.className "fas fa-poll"]
+                    ]
+                  ] 
+                  Html.span item.score 
+                 ]               
+              ]
+            ]                  
+          ]        
+        ]      
       ]
     ]
   ]
