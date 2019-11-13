@@ -12,7 +12,6 @@ type HackernewsItem = {
   itemType: string
   url: string
   score : int
-  kids : int list
 }
 
 [<RequireQualifiedAccess>]
@@ -42,8 +41,7 @@ let itemDecoder : Decoder<HackernewsItem> =
     title = fields.Required.At [ "title" ] Decode.string
     itemType = fields.Required.At [ "type" ] Decode.string
     url = fields.Required.At [ "url" ] Decode.string
-    score = fields.Required.At [ "score" ] Decode.int
-    kids = fields.Required.At [ "kids" ] (Decode.list Decode.int) })
+    score = fields.Required.At [ "score" ] Decode.int })
 
 let storiesEndpoint stories =
   let fromBaseUrl = sprintf "https://hacker-news.firebaseio.com/v0/%sstories.json"
@@ -68,7 +66,7 @@ let loadStoryItem (id: int) = async {
 }
 
 let (|HttpOk|HttpError|) status =
-  match status with 
+  match status with
   | 200 -> HttpOk
   | _ -> HttpError
 
@@ -87,11 +85,12 @@ let loadStoryItems stories = async {
         // aggregate the results into a single list
         let! storyItems =
           storyIds
-          |> List.take 10
+          |> List.truncate 10
           |> List.map loadStoryItem
           |> Async.Parallel
           |> Async.map (List.ofArray >> List.choose id)
 
+        printfn "LoadStoryItems Finished %A" (Encode.Auto.toString(4, storyItems))
         return LoadStoryItems (Finished (Ok storyItems))
 
     | Error errorMsg ->
@@ -164,6 +163,12 @@ let renderError (errorMsg: string) =
     prop.text errorMsg
   ]
 
+let div (classes: string list) (children: ReactElement list) =
+  Html.div [
+    prop.className classes
+    prop.children children
+  ]
+
 let renderItem item =
   Html.div [
     prop.className "box"
@@ -172,44 +177,29 @@ let renderItem item =
       style.marginBottom 15
     ]
     prop.children [
-      Html.div [
-        Html.a [
-          prop.style [ style.textDecoration.underline ]
-          prop.custom("target", "_blank")
-          prop.href item.url
-          prop.text item.title
-        ]                   
-      ]
-      Html.div [
-        prop.children [
+      div [ "columns"; "is-mobile" ] [
+        div [ "column"; "is-narrow" ] [
           Html.div [
-            prop.className "tag is-info"
+            prop.className [ "icon" ]
+            prop.style [ style.marginLeft 20 ]
             prop.children [
+              Html.i [prop.className "fa fa-poll fa-2x"]
               Html.span [
-                prop.className "icon"
-                prop.children [ 
-                  Html.i [prop.className "fas fa-poll"]
-                ]
-              ] 
-              Html.span item.score 
-             ]               
+                prop.style [ style.marginLeft 10; style.marginRight 10 ]
+                prop.text item.score
+              ]
+            ]
           ]
-          Html.span " "
+        ]
+
+        div [ "column" ] [
           Html.a [
-            prop.className "tag is-link"
-            prop.href (sprintf "https://news.ycombinator.com/item?id=%i" item.id)
+            prop.style [ style.textDecoration.underline ]
             prop.custom("target", "_blank")
-            prop.children [
-              Html.span [
-                prop.className "icon"
-                prop.children [ 
-                  Html.i [prop.className "fas fa-comments"]
-                ]
-              ] 
-              Html.span (item.kids |> List.length) 
-             ]               
-          ]     
-        ]      
+            prop.href item.url
+            prop.text item.title
+          ]
+        ]
       ]
     ]
   ]
@@ -253,4 +243,5 @@ let render (state: State) (dispatch: Msg -> unit) =
 
 Program.mkProgram init update render
 |> Program.withReactSynchronous "elmish-app"
+|> Program.withConsoleTrace
 |> Program.run
