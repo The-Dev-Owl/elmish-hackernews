@@ -27,6 +27,6 @@ type Deferred<'t> =
   | InProgress
   | Resolved of 't
 
-type AsyncOperationEvent<'t> =
+type AsyncOperationStatus<'t> =
   | Started
   | Finished of 't

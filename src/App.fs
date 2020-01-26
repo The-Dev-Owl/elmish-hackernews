@@ -10,7 +10,7 @@ type HackernewsItem = {
   id: int
   title: string
   itemType: string
-  url: string
+  url: string option
   score : int
 }
 
@@ -23,24 +23,27 @@ type Stories =
   | Show
   | Job
 
+type DeferredStoryItem = Deferred<Result<HackernewsItem, string>>
+
 type State =
   { CurrentStories: Stories
-    StoryItems : Deferred<Result<HackernewsItem list, string>> }
+    StoryItems : Deferred<Result<Map<int, DeferredStoryItem>, string>> }
 
 type Msg =
-  | LoadStoryItems of AsyncOperationEvent<Result<HackernewsItem list, string>>
+  | LoadStoryIds of AsyncOperationStatus<Result<int list, string>>
+  | LoadedStoryItem of int * Result<HackernewsItem, string>
   | ChangeStories of Stories
 
 let init() =
   { CurrentStories = Stories.New
-    StoryItems = HasNotStartedYet }, Cmd.ofMsg (LoadStoryItems Started)
+    StoryItems = HasNotStartedYet }, Cmd.ofMsg (LoadStoryIds Started)
 
 let itemDecoder : Decoder<HackernewsItem> =
   Decode.object (fun fields -> {
     id = fields.Required.At [ "id" ] Decode.int
     title = fields.Required.At [ "title" ] Decode.string
     itemType = fields.Required.At [ "type" ] Decode.string
-    url = fields.Required.At [ "url" ] Decode.string
+    url = fields.Optional.At [ "url" ] Decode.string
     score = fields.Required.At [ "score" ] Decode.int })
 
 let storiesEndpoint stories =
@@ -53,25 +56,32 @@ let storiesEndpoint stories =
   | Stories.Show -> fromBaseUrl "show"
   | Stories.Job -> fromBaseUrl "job"
 
-let loadStoryItem (id: int) = async {
-  let endpoint = sprintf "https://hacker-news.firebaseio.com/v0/item/%d.json" id
-  let! (status, responseText) = Http.get endpoint
-  match status with
-  | 200 ->
-    match Decode.fromString itemDecoder responseText with
-    | Ok storyItem -> return Some storyItem
-    | Error _ -> return None
-  | _ ->
-    return None
-}
 
 let (|HttpOk|HttpError|) status =
   match status with
   | 200 -> HttpOk
   | _ -> HttpError
 
-let loadStoryItems stories = async {
-  do! Async.Sleep 1500
+let rnd = System.Random()  
+
+let loadStoryItem (id: int) = async {
+    // simulate high network latency
+    do! Async.Sleep (rnd.Next(1000, 3000))
+    let endpoint = sprintf "https://hacker-news.firebaseio.com/v0/item/%d.json" id
+    let! (status, responseText) = Http.get endpoint
+    match status with
+    | HttpOk ->
+        match Decode.fromString itemDecoder responseText with
+        | Ok storyItem -> return LoadedStoryItem (id, Ok storyItem)
+        | Error parseError -> return LoadedStoryItem (id, Error parseError)
+    | HttpError ->
+        return LoadedStoryItem (id, Error ("Http error while loading " + string id))
+}
+
+
+
+let loadStoryIds stories = async {
+ 
   let endpoint = storiesEndpoint stories
   let! (status, responseText) = Http.get endpoint
   match status with
@@ -80,25 +90,19 @@ let loadStoryItems stories = async {
     let storyIds = Decode.fromString (Decode.list Decode.int) responseText
     match storyIds with
     | Ok storyIds ->
-        // take the first 10 IDs
-        // load the item from each ID in parallel
-        // aggregate the results into a single list
-        let! storyItems =
+      
+        let firstTenIds =
           storyIds
           |> List.truncate 10
-          |> List.map loadStoryItem
-          |> Async.Parallel
-          |> Async.map (List.ofArray >> List.choose id)
 
-        printfn "LoadStoryItems Finished %A" (Encode.Auto.toString(4, storyItems))
-        return LoadStoryItems (Finished (Ok storyItems))
+        return LoadStoryIds (Finished (Ok firstTenIds))
 
     | Error errorMsg ->
         // could not parse the array of story ID's
-        return LoadStoryItems (Finished (Error errorMsg))
+        return LoadStoryIds (Finished (Error errorMsg))
   | HttpError ->
     // non-OK response goes finishes with an error
-    return LoadStoryItems (Finished (Error responseText))
+    return LoadStoryIds (Finished (Error responseText))
 }
 
 let startLoading (state: State) =
@@ -108,17 +112,51 @@ let update (msg: Msg) (state: State) =
   match msg with
   | ChangeStories stories ->
       let nextState = { startLoading state with CurrentStories = stories }
-      let nextCmd = Cmd.fromAsync (loadStoryItems stories)
+      let nextCmd = Cmd.fromAsync (loadStoryIds stories)
       nextState, nextCmd
 
-  | LoadStoryItems Started ->
+  | LoadStoryIds Started ->
       let nextState = startLoading state
-      let nextCmd = Cmd.fromAsync (loadStoryItems state.CurrentStories)
+      let nextCmd = Cmd.fromAsync (loadStoryIds state.CurrentStories)
       nextState, nextCmd
 
-  | LoadStoryItems (Finished items) ->
-      let nextState = { state with StoryItems = Resolved items }
+  | LoadStoryIds (Finished (Ok storyIds)) ->
+      let initialItems = Map.ofList [ for id in storyIds -> (id, InProgress) ]
+      let nextState = { state with StoryItems = Resolved (Ok initialItems) }
+      nextState, Cmd.batch [ for id in storyIds -> Cmd.fromAsync (loadStoryItem id) ]
+
+  | LoadStoryIds (Finished (Error error)) ->
+      let nextState = { state with StoryItems = Resolved (Error error) }
       nextState, Cmd.none
+
+  | LoadedStoryItem (itemId, Ok item) ->
+      match state.StoryItems with
+      | Resolved (Ok storiesMap) ->
+          let modifiedStoriesMap =
+            storiesMap
+            |> Map.remove itemId
+            |> Map.add itemId (Resolved (Ok item))
+
+          let nextState = { state with StoryItems = Resolved (Ok modifiedStoriesMap) }
+          nextState, Cmd.none
+
+      | _ ->
+          state, Cmd.none
+
+  | LoadedStoryItem (itemId, Error error) ->
+      match state.StoryItems with
+      | Resolved (Ok storiesMap) ->
+          let modifiedStoriesMap =
+            storiesMap
+            |> Map.remove itemId
+            |> Map.add itemId (Resolved (Error error))
+
+          let nextState = { state with StoryItems = Resolved (Ok modifiedStoriesMap) }
+          nextState, Cmd.none
+
+      | _ ->
+          state, Cmd.none        
+
 
 let storiesName = function
   | Stories.New -> "New"
@@ -169,45 +207,36 @@ let div (classes: string list) (children: ReactElement list) =
     prop.children children
   ]
 
-let renderItem item =
+let renderItemContent (item: HackernewsItem) =
   Html.div [
-    prop.className "box"
-    prop.style [
-      style.marginTop 15
-      style.marginBottom 15
-    ]
-    prop.children [
-      div [ "columns"; "is-mobile" ] [
-        div [ "column"; "is-narrow" ] [
-          Html.div [
-            prop.className [ "icon" ]
-            prop.style [ style.marginLeft 20 ]
-            prop.children [
-              Html.i [prop.className "fa fa-poll fa-2x"]
-              Html.span [
-                prop.style [ style.marginLeft 10; style.marginRight 10 ]
-                prop.text item.score
-              ]
+    div [ "columns"; "is-mobile" ] [
+      div [ "column"; "is-narrow" ] [
+        Html.div [
+          prop.className [ "icon" ]
+          prop.style [ style.marginLeft 20 ]
+          prop.children [
+            Html.i [prop.className "fa fa-poll fa-2x"]
+            Html.span [
+              prop.style [ style.marginLeft 10; style.marginRight 10 ]
+              prop.text item.score
             ]
           ]
         ]
+      ]
 
-        div [ "column" ] [
-          Html.a [
-            prop.style [ style.textDecoration.underline ]
-            prop.custom("target", "_blank")
-            prop.href item.url
-            prop.text item.title
-          ]
-        ]
+      div [ "column" ] [
+        match item.url with
+        | Some url ->
+            Html.a [
+              prop.style [ style.textDecoration.underline ]
+              // prop.target.blank
+              prop.href url
+              prop.text item.title
+            ]
+
+        | None ->  Html.p item.title
       ]
     ]
-  ]
-
-let renderItems (items: HackernewsItem list) =
-  Html.fragment [
-    for item in items ->
-      renderItem item
   ]
 
 let spinner =
@@ -220,12 +249,32 @@ let spinner =
     ]
   ]
 
+let renderStoryItem (itemId: int) storyItem =
+  let renderedItem =
+      match storyItem with
+      | HasNotStartedYet -> Html.none
+      | InProgress -> spinner
+      | Resolved (Error error) -> renderError error
+      | Resolved (Ok storyItem) -> renderItemContent storyItem
+
+  Html.div [
+    prop.key itemId
+    prop.className "box"
+    prop.style [ style.marginTop 15; style.marginBottom 15]
+    prop.children [ renderedItem ]
+  ]
+
 let renderStories items =
   match items with
   | HasNotStartedYet -> Html.none
   | InProgress -> spinner
   | Resolved (Error errorMsg) -> renderError errorMsg
-  | Resolved (Ok items) -> renderItems items
+  | Resolved (Ok items) -> 
+      items
+      |> Map.toList
+      |> List.map (fun (id, storyItem) -> renderStoryItem id storyItem)
+      |> Html.div
+
 
 let render (state: State) (dispatch: Msg -> unit) =
   Html.div [
